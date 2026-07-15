@@ -39,7 +39,7 @@ except ImportError:  # Aggregate/verify remain usable without httpx.
     httpx = None  # type: ignore[assignment]
 
 BASE_URL = "https://datafeed.dukascopy.com/datafeed"
-PROGRAM_VERSION = "1.0.0"
+PROGRAM_VERSION = "1.1.0"
 PARSER_VERSION = "dukascopy-bi5-v1"
 DATABASE_SCHEMA_VERSION = 1
 TICK_RECORD = struct.Struct(">iiiff")
@@ -57,6 +57,8 @@ DEFAULT_SYMBOLS = (
     "GBPJPY",
     "AUDJPY",
     "CADJPY",
+    "USDNOK",
+    "USDSEK",
 )
 
 PRICE_DIVISORS = {
@@ -88,6 +90,8 @@ PRICE_DIVISORS = {
     "USDCAD": 100_000,
     "USDCHF": 100_000,
     "USDJPY": 1_000,
+    "USDNOK": 100_000,
+    "USDSEK": 100_000,
 }
 
 CSV_COLUMNS = (
@@ -1024,7 +1028,7 @@ def aggregate_command(args: argparse.Namespace) -> int:
 def add_range_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--symbols", default=",".join(DEFAULT_SYMBOLS))
     parser.add_argument("--start", default="2016-01-01")
-    parser.add_argument("--end", default="2025-09-15", help="Exclusive UTC end")
+    parser.add_argument("--end", default="2026-01-01", help="Exclusive UTC end")
     parser.add_argument("--database-dir", default="dukascopy_sqlite")
 
 

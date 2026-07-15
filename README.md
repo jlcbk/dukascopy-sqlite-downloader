@@ -66,7 +66,7 @@ python download_dukascopy_sqlite.py download \
 ```bash
 python download_dukascopy_sqlite.py download \
   --start 2016-01-01 \
-  --end 2025-09-15 \
+  --end 2026-01-01 \
   --database-dir /srv/dukascopy_sqlite \
   --workers 2 \
   --retries 5 \
@@ -114,7 +114,8 @@ curl -C - -u USER:PASSWORD -O \
   https://YOUR_VPS/dukascopy/EURUSD.sqlite.json
 ```
 
-12 个品种全部完成后，在 VPS 生成整体传输 manifest：
+默认 14 个品种全部完成后，在 VPS 生成整体传输 manifest。v1.1 增加 `USDNOK` 和 `USDSEK`，
+用于完整的 G9 美元腿日内研究：
 
 ```bash
 python download_dukascopy_sqlite.py manifest \
@@ -146,17 +147,17 @@ python download_dukascopy_sqlite.py aggregate \
   --database-dir ./dukascopy_sqlite \
   --output-dir ./data/dukascopy_bid_ask \
   --start 2016-01-01 \
-  --end 2025-09-15 \
+  --end 2026-01-01 \
   --interval 4h
 ```
 
 默认只要有一个应请求小时没有数据库状态就拒绝生成正式结果；`--allow-incomplete` 只用于
-诊断，产出的 manifest 会记录失败小时且不能通过项目数据审计。聚合结果为 12 个 CSV 和
-`_data_manifest.json`，可以直接供 `factors_broker_carry_dev.yaml` 使用。
+诊断，产出的 manifest 会记录失败小时且不能通过项目数据审计。默认聚合结果为 14 个 CSV
+和 `_data_manifest.json`；下游研究可以继续只选择其冻结品种子集。
 
 ## 容量
 
-- 12 个 SQLite 合计预计约 25–50 GB，极端情况下可能更高；
+- 14 个 SQLite 合计预计约 30–60 GB，极端情况下可能更高；
 - 每个数据库通常约 1–5 GB，随品种流动性不同；
 - 聚合后的全部 4h CSV 通常约 50–200 MB；
 - SQLite 内仍保存 Dukascopy 原始压缩 payload，不保存解压 tick，因此不会膨胀到逐 tick
