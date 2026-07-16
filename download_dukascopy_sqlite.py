@@ -39,7 +39,7 @@ except ImportError:  # Aggregate/verify remain usable without httpx.
     httpx = None  # type: ignore[assignment]
 
 BASE_URL = "https://datafeed.dukascopy.com/datafeed"
-PROGRAM_VERSION = "1.1.0"
+PROGRAM_VERSION = "1.1.1"
 PARSER_VERSION = "dukascopy-bi5-v1"
 DATABASE_SCHEMA_VERSION = 1
 TICK_RECORD = struct.Struct(">iiiff")
@@ -328,7 +328,11 @@ def database_contains_all_hours(
 
 
 def prepare_working_database(
-    database_dir: Path, symbol: str, hours: list[datetime]
+    database_dir: Path,
+    symbol: str,
+    hours: list[datetime],
+    *,
+    refresh_no_data: bool = False,
 ) -> Path | None:
     final_path = database_dir / f"{symbol}.sqlite"
     working_path = database_dir / ".work" / f"{symbol}.sqlite.part"
@@ -340,8 +344,24 @@ def prepare_working_database(
     if working_path.exists():
         return working_path
     if final_path.exists():
-        if database_contains_all_hours(final_path, symbol, hours):
+        if not refresh_no_data and database_contains_all_hours(final_path, symbol, hours):
             return None
+        if refresh_no_data:
+            if not hours:
+                raise ValueError("refresh-no-data requires at least one requested market hour")
+            connection = sqlite3.connect(f"file:{final_path}?mode=ro", uri=True)
+            try:
+                stored_start = metadata_get(connection, "requested_start")
+                stored_end = metadata_get(connection, "requested_end_exclusive")
+            finally:
+                connection.close()
+            requested_start = iso_hour(hours[0])
+            requested_end = iso_hour(hours[-1] + timedelta(hours=1))
+            if stored_start != requested_start or stored_end != requested_end:
+                raise ValueError(
+                    "Refreshing a published database requires its original complete range: "
+                    f"{stored_start} to {stored_end}"
+                )
         final_path.replace(working_path)
         sidecar_path(final_path, ".sha256").unlink(missing_ok=True)
         sidecar_path(final_path, ".json").unlink(missing_ok=True)
@@ -463,7 +483,12 @@ def download_symbol(
     batch_size: int,
     refresh_no_data: bool,
 ) -> int:
-    database_path = prepare_working_database(database_dir, symbol, hours)
+    database_path = prepare_working_database(
+        database_dir,
+        symbol,
+        hours,
+        refresh_no_data=refresh_no_data,
+    )
     if database_path is None:
         print(f"[{symbol}] already published and complete", flush=True)
         return 0

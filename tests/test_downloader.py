@@ -192,6 +192,90 @@ def test_download_resumes_and_only_publishes_complete_database(
     assert calls == []
 
 
+def test_refresh_no_data_reopens_published_database_and_preserves_range(
+    tmp_path, monkeypatch
+) -> None:
+    calls: list[str] = []
+    empty_hours = {2}
+
+    class FakeResponse:
+        status_code = 200
+
+        def __init__(self, url: str) -> None:
+            hour = int(url.rsplit("/", 1)[-1][:2])
+            self.content = b"" if hour in empty_hours else bi5_payload(hour)
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return None
+
+        def get(self, url: str):
+            calls.append(url)
+            return FakeResponse(url)
+
+    monkeypatch.setattr(
+        downloader,
+        "build_http_client",
+        lambda proxy, use_env_proxy, timeout: FakeClient(),
+    )
+    arguments = SimpleNamespace(
+        symbols="EURUSD",
+        start="2025-01-06T00:00:00Z",
+        end="2025-01-06T08:00:00Z",
+        database_dir=str(tmp_path),
+        workers=2,
+        retries=0,
+        timeout=1.0,
+        batch_size=4,
+        proxy=None,
+        use_env_proxy=False,
+        refresh_no_data=False,
+    )
+    assert downloader.download_command(arguments) == 0
+    assert len(calls) == 8
+    with sqlite3.connect(tmp_path / "EURUSD.sqlite") as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM hours WHERE status='no_data'"
+        ).fetchone()[0] == 1
+
+    calls.clear()
+    empty_hours.clear()
+    arguments.refresh_no_data = True
+    assert downloader.download_command(arguments) == 0
+    assert len(calls) == 1
+    with sqlite3.connect(tmp_path / "EURUSD.sqlite") as connection:
+        metadata = dict(connection.execute("SELECT key, value FROM metadata"))
+        assert metadata["requested_start"] == arguments.start
+        assert metadata["requested_end_exclusive"] == arguments.end
+        assert metadata["expected_hours"] == "8"
+        assert metadata["ok_hours"] == "8"
+        assert metadata["no_data_hours"] == "0"
+
+
+def test_refresh_no_data_rejects_partial_range_for_published_database(tmp_path) -> None:
+    hours = downloader.requested_hours(
+        downloader.parse_utc("2025-01-06T00:00:00Z"),
+        downloader.parse_utc("2025-01-06T08:00:00Z"),
+    )
+    final_path = store_complete_database(tmp_path, hours)
+    with sqlite3.connect(final_path) as connection:
+        downloader.metadata_set(connection, "requested_start", "2025-01-06T00:00:00Z")
+        downloader.metadata_set(
+            connection, "requested_end_exclusive", "2025-01-06T08:00:00Z"
+        )
+
+    with pytest.raises(ValueError, match="original complete range"):
+        downloader.prepare_working_database(
+            tmp_path,
+            "EURUSD",
+            hours[2:4],
+            refresh_no_data=True,
+        )
+
+
 def test_cli_defaults_to_direct() -> None:
     args = downloader.build_parser().parse_args(["download"])
     assert args.proxy is None
